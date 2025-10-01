@@ -1,12 +1,13 @@
 # backend/app/schemas.py
 from pydantic import BaseModel, Field, HttpUrl
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
+# ========== PRODUCTOS ==========
 class ProductoBase(BaseModel):
     id_product_type: Optional[int] = None
     id_unit_measurement: Optional[int] = None
-    code: Optional[int] = Field(None,description="Código interno (entero)")
+    code: Optional[int] = Field(None, description="Código interno (entero)")
     cname: str = Field(..., max_length=255)
     description: Optional[str] = None
     photo: Optional[str] = Field(None, max_length=512)  # puede ser URL Firebase
@@ -32,7 +33,18 @@ class ProductoOut(ProductoBase):
     id_product: int
     add_date: datetime
     mod_date: datetime
+    
+    class Config:
+        from_attributes = True
 
+# ========== INVENTARIO ==========
+class InventoryByWarehouseOut(BaseModel):
+    id_product: int
+    id_warehouse: int
+    product_name: str
+    warehouse_name: str
+    stock: int
+    
     class Config:
         from_attributes = True
 
@@ -57,14 +69,11 @@ class WarehouseOut(WarehouseBase):
     id_warehouse: int
     add_date: datetime
     mod_date: datetime
-
+    
     class Config:
         from_attributes = True
 
 # ========== KITS ==========
-# ---------- KITS ----------
-from typing import List  # si no lo tienes ya
-
 class KitBase(BaseModel):
     code: Optional[int] = Field(None, description="Código del kit")
     cname: str = Field(..., max_length=255, description="Nombre del kit")
@@ -87,6 +96,7 @@ class KitOut(KitBase):
     id_kit: int
     add_date: datetime
     mod_date: datetime
+    
     class Config:
         from_attributes = True
 
@@ -110,7 +120,7 @@ class KitCompositionOut(BaseModel):
     # Datos denormalizados para el frontend (opcionales)
     product_code: Optional[int] = None
     product_name: Optional[str] = None
-
+    
     class Config:
         from_attributes = True
 
@@ -151,6 +161,6 @@ class TransactionOut(TransactionBase):
     product_name: Optional[str] = None
     warehouse_name: Optional[str] = None
     kit_name: Optional[str] = None
-
+    
     class Config:
         from_attributes = True

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, nextTick, computed } from "vue";
+import { onMounted, ref, watch, nextTick } from "vue";
 import api from "../api";
 import ProductForm from "./ProductForm.vue";
 
@@ -18,15 +18,29 @@ type Product = {
   mod_date?: string | null;
 };
 
-type Inventory = {
+type InventoryByWarehouse = {
   id_product: number;
+  id_warehouse: number;
+  product_name: string;
+  warehouse_name: string;
+  stock: number;
+};
+
+type ProductWithWarehouse = {
+  id_product: number;
+  code?: number | null;
+  cname: string;
+  unit_cost?: number | null;
+  warehouse_name: string;
+  id_warehouse: number;
   stock: number;
 };
 
 const loading = ref(false);
 const q = ref("");
-const rows = ref<Product[]>([]);
-const inventory = ref<Map<number, number>>(new Map());
+const products = ref<Product[]>([]);
+const inventory = ref<InventoryByWarehouse[]>([]);
+const rows = ref<ProductWithWarehouse[]>([]);
 const error = ref<string | null>(null);
 
 // Modal state
@@ -43,21 +57,54 @@ const form = ref<Product>({
   description: "",
 });
 
-// Obtener stock de un producto
-function getStock(productId: number): number {
-  return inventory.value.get(productId) || 0;
-}
-
-// Cargar inventario
+// Cargar inventario desagregado por bodega
 async function loadInventory() {
   try {
-    const { data } = await api.get<Inventory[]>("/products/inventory/summary");
-    const map = new Map<number, number>();
-    data.forEach(item => map.set(item.id_product, item.stock));
-    inventory.value = map;
+    const { data } = await api.get<InventoryByWarehouse[]>("/products/inventory/summary");
+    inventory.value = data;
   } catch (e: any) {
     console.error("Error cargando inventario:", e);
   }
+}
+
+// Combinar productos con inventario por bodega
+function combineProductsWithInventory() {
+  const combined: ProductWithWarehouse[] = [];
+  
+  for (const product of products.value) {
+    // Buscar todas las bodegas que tienen este producto
+    const warehouseStocks = inventory.value.filter(
+      inv => inv.id_product === product.id_product
+    );
+    
+    if (warehouseStocks.length === 0) {
+      // Si no tiene inventario, mostrar una línea con stock 0
+      combined.push({
+        id_product: product.id_product,
+        code: product.code,
+        cname: product.cname,
+        unit_cost: product.unit_cost,
+        warehouse_name: "—",
+        id_warehouse: 0,
+        stock: 0,
+      });
+    } else {
+      // Crear una línea por cada bodega
+      for (const inv of warehouseStocks) {
+        combined.push({
+          id_product: product.id_product,
+          code: product.code,
+          cname: product.cname,
+          unit_cost: product.unit_cost,
+          warehouse_name: inv.warehouse_name,
+          id_warehouse: inv.id_warehouse,
+          stock: inv.stock,
+        });
+      }
+    }
+  }
+  
+  rows.value = combined;
 }
 
 // Cargar productos
@@ -68,8 +115,9 @@ async function load() {
     const { data } = await api.get<Product[]>("/products", {
       params: { q: q.value || undefined, limit: 200, skip: 0 },
     });
-    rows.value = data;
+    products.value = data;
     await loadInventory();
+    combineProductsWithInventory();
   } catch (e: any) {
     error.value = e?.response?.data?.detail || e.message || "Network Error";
   } finally {
@@ -190,7 +238,7 @@ onMounted(load);
 <template>
   <section class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-xl font-semibold">Productos</h2>
+      <h2 class="text-xl font-semibold">Productos por Bodega</h2>
       <button
         class="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
         @click="openCreate"
@@ -202,7 +250,7 @@ onMounted(load);
     <div class="flex items-center gap-2">
       <input
         v-model="q"
-        placeholder="Buscar por nombre…"
+        placeholder="Buscar por nombre o código…"
         class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
       />
       <button @click="load" class="rounded-lg border px-4 py-2 hover:bg-gray-50">
@@ -223,7 +271,8 @@ onMounted(load);
           <tr>
             <th class="px-3 py-2">ID</th>
             <th class="px-3 py-2">Código</th>
-            <th class="px-3 py-2">Nombre</th>
+            <th class="px-3 py-2">Producto</th>
+            <th class="px-3 py-2">Bodega</th>
             <th class="px-3 py-2">Costo</th>
             <th class="px-3 py-2 text-center">Existencias</th>
             <th class="px-3 py-2"></th>
@@ -231,32 +280,35 @@ onMounted(load);
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="6" class="px-3 py-6 text-center text-gray-500">
+            <td colspan="7" class="px-3 py-6 text-center text-gray-500">
               Cargando…
             </td>
           </tr>
           <tr v-else-if="rows.length === 0">
-            <td colspan="6" class="px-3 py-6 text-center text-gray-500">
+            <td colspan="7" class="px-3 py-6 text-center text-gray-500">
               Sin resultados
             </td>
           </tr>
-          <tr v-for="r in rows" :key="r.id_product" class="border-t">
+          <tr v-for="(r, idx) in rows" :key="`${r.id_product}-${r.id_warehouse}-${idx}`" class="border-t">
             <td class="px-3 py-2">{{ r.id_product }}</td>
             <td class="px-3 py-2">{{ r.code ?? "—" }}</td>
-            <td class="px-3 py-2">{{ r.cname }}</td>
+            <td class="px-3 py-2 font-medium">{{ r.cname }}</td>
+            <td class="px-3 py-2">
+              <span class="text-gray-600">{{ r.warehouse_name }}</span>
+            </td>
             <td class="px-3 py-2">{{ r.unit_cost ?? "—" }}</td>
             <td class="px-3 py-2 text-center">
               <span 
                 :class="[
                   'inline-block rounded px-2 py-1 font-medium',
-                  getStock(r.id_product) > 0 
+                  r.stock > 0 
                     ? 'bg-green-100 text-green-800' 
-                    : getStock(r.id_product) === 0
+                    : r.stock === 0
                     ? 'bg-gray-100 text-gray-600'
                     : 'bg-red-100 text-red-800'
                 ]"
               >
-                {{ getStock(r.id_product) }}
+                {{ r.stock }}
               </span>
             </td>
             <td class="px-3 py-2 space-x-2 text-right">

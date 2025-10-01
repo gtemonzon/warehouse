@@ -1,11 +1,10 @@
 # backend/app/routers/products.py
 from typing import List, Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-
+from sqlalchemy import func, case
 from ..database import get_db
-from ..models import TabProductos
+from ..models import TabProductos, TabProductTransaction, TabWarehouse
 from ..schemas import ProductoCreate, ProductoOut, ProductoUpdate
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -17,7 +16,6 @@ def create_product(payload: ProductoCreate, db: Session = Depends(get_db)):
         exists = db.query(TabProductos).filter(TabProductos.code == payload.code).first()
         if exists:
             raise HTTPException(status_code=409, detail="El código ya existe")
-
     item = TabProductos(**payload.model_dump())
     db.add(item)
     db.commit()
@@ -49,9 +47,7 @@ def update_product(id_product: int, payload: ProductoUpdate, db: Session = Depen
     item = db.get(TabProductos, id_product)
     if not item:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
-
     data = payload.model_dump(exclude_unset=True)
-
     # mantener unicidad de code si cambia
     if "code" in data and data["code"] is not None:
         clash = db.query(TabProductos).filter(
@@ -60,10 +56,8 @@ def update_product(id_product: int, payload: ProductoUpdate, db: Session = Depen
         ).first()
         if clash:
             raise HTTPException(status_code=409, detail="El código ya existe")
-
     for k, v in data.items():
         setattr(item, k, v)
-
     db.commit()
     db.refresh(item)
     return item
@@ -80,27 +74,39 @@ def delete_product(id_product: int, db: Session = Depends(get_db)):
 @router.get("/inventory/summary", response_model=List[dict])
 def get_inventory_summary(db: Session = Depends(get_db)):
     """
-    Devuelve el stock total de cada producto (sumando todos los almacenes)
+    Devuelve el stock de cada producto desagregado por bodega
     """
-    from sqlalchemy import func, case
-    from app.models import TabProductTransaction
-    
-    # Calcular stock por producto
+    # Calcular stock por producto y bodega
     query = db.query(
         TabProductTransaction.id_product,
+        TabProductTransaction.id_warehouse,
+        TabProductos.cname.label('product_name'),
+        TabWarehouse.cname.label('warehouse_name'),
         func.sum(
             case(
                 (TabProductTransaction.type_transaction == 0, TabProductTransaction.quantaty_products),
                 else_=-TabProductTransaction.quantaty_products
             )
         ).label('stock')
-    ).group_by(TabProductTransaction.id_product)
+    ).join(
+        TabProductos, TabProductTransaction.id_product == TabProductos.id_product
+    ).join(
+        TabWarehouse, TabProductTransaction.id_warehouse == TabWarehouse.id_warehouse
+    ).group_by(
+        TabProductTransaction.id_product,
+        TabProductTransaction.id_warehouse,
+        TabProductos.cname,
+        TabWarehouse.cname
+    ).all()
     
-    results = query.all()
-    
-    # Convertir a diccionario
-    inventory = {}
-    for row in results:
-        inventory[row.id_product] = row.stock or 0
-    
-    return [{"id_product": k, "stock": v} for k, v in inventory.items()]
+    # Convertir a lista de diccionarios
+    return [
+        {
+            "id_product": row.id_product,
+            "id_warehouse": row.id_warehouse,
+            "product_name": row.product_name,
+            "warehouse_name": row.warehouse_name,
+            "stock": row.stock or 0
+        }
+        for row in query
+    ]

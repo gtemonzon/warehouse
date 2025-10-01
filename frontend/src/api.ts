@@ -1,8 +1,8 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "/api",   // ← Vite lo redirige internamente al 8000
-  timeout: 15000,
+  baseURL: import.meta.env.VITE_API_URL || "https://warehouse-api-y1mn.onrender.com",
+  timeout: 30000,
 });
 
 export default api;

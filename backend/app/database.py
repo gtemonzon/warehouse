@@ -1,11 +1,19 @@
 # backend/app/database.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+import os
 
-# === SQLAlchemy (para endpoints que usen ORM) ===
-DATABASE_URL = "mysql+mysqlconnector://warehouse_user:12345678@127.0.0.1:3306/warehouse"
+# Obtener URL de la base de datos desde variable de entorno
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost/warehouse")
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+# Crear engine de SQLAlchemy
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -16,18 +24,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-# === Conector directo MySQL (para routers que usan SQL crudo) ===
-# Así mantenemos compatibilidad con products/warehouses/transactions actuales.
-import mysql.connector
-
-def get_connection():
-    """Conexión directa mysql.connector (cierra con context manager)."""
-    return mysql.connector.connect(
-        host="127.0.0.1",
-        user="warehouse_user",
-        password="12345678",
-        database="warehouse",
-        port=3306,
-        autocommit=False,
-    )

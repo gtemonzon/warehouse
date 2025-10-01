@@ -12,8 +12,28 @@ services:
       - "${MYSQL_PORT}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
-      - ./sql/procedures.sql:/docker-entrypoint-initdb.d/procedures.sql:ro
-      - ./sql/sample_data.sql:/docker-entrypoint-initdb.d/sample_data.sql:ro
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -p${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: warehouse-phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: ${MYSQL_USER}
+      PMA_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "8080:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
 volumes:
   mysql_data:

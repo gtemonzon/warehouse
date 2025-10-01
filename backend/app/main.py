@@ -14,8 +14,14 @@ Base.metadata.create_all(bind=engine)
 
 # ---------- CORS para Producción ----------
 # Obtener orígenes desde variable de entorno o usar valor por defecto
-cors_origins = os.getenv("CORS_ORIGINS", "*")
-origins = cors_origins.split(",") if cors_origins != "*" else ["*"]
+# ---------- CORS para Producción ----------
+import os
+
+cors_origins_str = os.getenv("CORS_ORIGINS", "*")
+if cors_origins_str == "*":
+    origins = ["*"]
+else:
+    origins = [origin.strip() for origin in cors_origins_str.split(",")]
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, nextTick } from "vue";
+import { onMounted, ref, watch, nextTick, computed } from "vue";
 import api from "../api";
 import ProductForm from "./ProductForm.vue";
 
@@ -36,12 +36,19 @@ type ProductWithWarehouse = {
   stock: number;
 };
 
+type SortField = 'id_product' | 'code' | 'cname' | 'warehouse_name' | 'unit_cost' | 'stock';
+type SortOrder = 'asc' | 'desc';
+
 const loading = ref(false);
 const q = ref("");
 const products = ref<Product[]>([]);
 const inventory = ref<InventoryByWarehouse[]>([]);
-const rows = ref<ProductWithWarehouse[]>([]);
+const unsortedRows = ref<ProductWithWarehouse[]>([]);
 const error = ref<string | null>(null);
+
+// Ordenamiento
+const sortField = ref<SortField>('id_product');
+const sortOrder = ref<SortOrder>('desc');
 
 // Modal state
 const showModal = ref(false);
@@ -104,7 +111,53 @@ function combineProductsWithInventory() {
     }
   }
   
-  rows.value = combined;
+  unsortedRows.value = combined;
+}
+
+// Ordenar filas
+const rows = computed(() => {
+  const sorted = [...unsortedRows.value];
+  
+  sorted.sort((a, b) => {
+    let aVal: any = a[sortField.value];
+    let bVal: any = b[sortField.value];
+    
+    // Manejar nulls y undefined
+    if (aVal === null || aVal === undefined) aVal = '';
+    if (bVal === null || bVal === undefined) bVal = '';
+    
+    // Comparar
+    let comparison = 0;
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      comparison = aVal.localeCompare(bVal);
+    } else if (typeof aVal === 'number' && typeof bVal === 'number') {
+      comparison = aVal - bVal;
+    } else {
+      comparison = String(aVal).localeCompare(String(bVal));
+    }
+    
+    return sortOrder.value === 'asc' ? comparison : -comparison;
+  });
+  
+  return sorted;
+});
+
+// Cambiar ordenamiento
+function toggleSort(field: SortField) {
+  if (sortField.value === field) {
+    // Si ya está ordenando por este campo, cambiar dirección
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    // Cambiar a nuevo campo, por defecto ascendente
+    sortField.value = field;
+    sortOrder.value = 'asc';
+  }
+}
+
+// Obtener icono de ordenamiento
+function getSortIcon(field: SortField): string {
+  if (sortField.value !== field) return '↕';
+  return sortOrder.value === 'asc' ? '↑' : '↓';
 }
 
 // Cargar productos
@@ -269,12 +322,60 @@ onMounted(load);
       <table class="min-w-full text-sm">
         <thead class="bg-gray-50 text-left">
           <tr>
-            <th class="px-3 py-2">ID</th>
-            <th class="px-3 py-2">Código</th>
-            <th class="px-3 py-2">Producto</th>
-            <th class="px-3 py-2">Bodega</th>
-            <th class="px-3 py-2">Costo</th>
-            <th class="px-3 py-2 text-center">Existencias</th>
+            <th class="px-3 py-2">
+              <button 
+                @click="toggleSort('id_product')"
+                class="flex items-center gap-1 hover:text-blue-600 font-semibold"
+              >
+                ID
+                <span class="text-xs">{{ getSortIcon('id_product') }}</span>
+              </button>
+            </th>
+            <th class="px-3 py-2">
+              <button 
+                @click="toggleSort('code')"
+                class="flex items-center gap-1 hover:text-blue-600 font-semibold"
+              >
+                Código
+                <span class="text-xs">{{ getSortIcon('code') }}</span>
+              </button>
+            </th>
+            <th class="px-3 py-2">
+              <button 
+                @click="toggleSort('cname')"
+                class="flex items-center gap-1 hover:text-blue-600 font-semibold"
+              >
+                Producto
+                <span class="text-xs">{{ getSortIcon('cname') }}</span>
+              </button>
+            </th>
+            <th class="px-3 py-2">
+              <button 
+                @click="toggleSort('warehouse_name')"
+                class="flex items-center gap-1 hover:text-blue-600 font-semibold"
+              >
+                Bodega
+                <span class="text-xs">{{ getSortIcon('warehouse_name') }}</span>
+              </button>
+            </th>
+            <th class="px-3 py-2">
+              <button 
+                @click="toggleSort('unit_cost')"
+                class="flex items-center gap-1 hover:text-blue-600 font-semibold"
+              >
+                Costo
+                <span class="text-xs">{{ getSortIcon('unit_cost') }}</span>
+              </button>
+            </th>
+            <th class="px-3 py-2 text-center">
+              <button 
+                @click="toggleSort('stock')"
+                class="flex items-center gap-1 hover:text-blue-600 font-semibold mx-auto"
+              >
+                Existencias
+                <span class="text-xs">{{ getSortIcon('stock') }}</span>
+              </button>
+            </th>
             <th class="px-3 py-2"></th>
           </tr>
         </thead>
@@ -289,7 +390,7 @@ onMounted(load);
               Sin resultados
             </td>
           </tr>
-          <tr v-for="(r, idx) in rows" :key="`${r.id_product}-${r.id_warehouse}-${idx}`" class="border-t">
+          <tr v-for="(r, idx) in rows" :key="`${r.id_product}-${r.id_warehouse}-${idx}`" class="border-t hover:bg-gray-50">
             <td class="px-3 py-2">{{ r.id_product }}</td>
             <td class="px-3 py-2">{{ r.code ?? "—" }}</td>
             <td class="px-3 py-2 font-medium">{{ r.cname }}</td>

@@ -4,7 +4,7 @@ from sqlalchemy.pool import QueuePool
 from .config import settings
 
 engine: Engine = create_engine(
-    settings.url,
+    settings.database_url,  # ✅ Cambiado de settings.url
     poolclass=QueuePool,
     pool_pre_ping=True,
     pool_size=5,
